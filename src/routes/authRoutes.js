@@ -1,5 +1,5 @@
 const express = require("express");
-const { registerUser , loginUser } = require("../controllers/authController");
+const { registerUser , loginUser ,googleLogin ,completeGoogleRegistration } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 
@@ -10,6 +10,12 @@ router.post("/register", registerUser);
 
 // Login route
 router.post("/login", loginUser);
+
+// google login
+router.post("/google", googleLogin);
+
+// google registration login
+router.post("/google/complete-registration", completeGoogleRegistration);
 
 // Protected test route
 router.get("/verify", protect, (req, res) => {
