@@ -6,6 +6,7 @@ const path = require("path");
 const Submission = require("../models/Submission");
 const Application = require("../models/Application");
 const Task = require("../models/Task");
+const Payment = require("../models/Payment");
 
 // Helper: Delete uploaded files if submission creation fails
 const deleteUploadedFiles = (files = []) => {
@@ -307,6 +308,37 @@ const reviewSubmission = async (req, res) => {
                 if (!updatedTask) {
                     throw new Error("TASK_NOT_AVAILABLE_FOR_APPROVAL");
                 }
+
+                // Find the accepted application
+                const application = await Application.findOne({
+                    _id: submission.application,
+                    task: submission.task,
+                    freelancer: submission.freelancer,
+                    status: "accepted",
+                }).session(session);
+
+                if (!application) {
+                    throw new Error("ACCEPTED_APPLICATION_NOT_FOUND");
+                }
+
+                // Create pending payment
+                await Payment.create(
+                    [
+                        {
+                            task: submission.task,
+                            application: application._id,
+                            submission: submission._id,
+                            client: clientId,
+                            freelancer: submission.freelancer,
+                            amount: application.bidAmount,
+                            status: "pending",
+
+                            // Payment method will be selected later
+                            paymentMethod: null,
+                        },
+                    ],
+                    { session }
+                );
             }
 
             submission.status = status;
@@ -336,6 +368,12 @@ const reviewSubmission = async (req, res) => {
         if (error.message === "TASK_NOT_AVAILABLE_FOR_APPROVAL") {
             return res.status(400).json({
                 message: "Task is not available for approval.",
+            });
+        }
+
+        if (error.message === "ACCEPTED_APPLICATION_NOT_FOUND") {
+            return res.status(400).json({
+                message: "Accepted application not found for this submission.",
             });
         }
 
