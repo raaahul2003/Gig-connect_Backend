@@ -2,6 +2,7 @@
 const Payment = require("../models/Payment");
 const razorpay = require("../config/razorpay");
 const crypto = require("crypto");
+const { createNotification } = require("./notificationController");
 
 // 1. Get payments made by the logged-in client
 const getClientPayments = async (req, res) => {
@@ -111,6 +112,15 @@ const createRazorpayOrder = async (req, res) => {
             payment.status = "processing";
 
             await payment.save();
+
+            await createNotification({
+                recipient: payment.freelancer,
+                sender: payment.client,
+                type: "payment_received",
+                title: "Payment received!",
+                message: "Your payment for the completed task has been received.",
+                link: "/freelancer/earnings",
+            });
 
         } else {
             return res.status(400).json({

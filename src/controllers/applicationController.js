@@ -1,6 +1,7 @@
 const Application = require("../models/Application");
 const Task = require("../models/Task");
 const mongoose = require("mongoose");
+const { createNotification } = require("./notificationController");
 
 const createApplication = async (req, res) => {
   try {
@@ -61,6 +62,15 @@ const createApplication = async (req, res) => {
       proposal: proposal.trim(),
       bidAmount: parsedBid,
       deliveryHours: parsedHours,
+    });
+
+    await createNotification({
+      recipient: task.client,
+      sender: freelancerId,
+      type: "application_received",
+      title: "New application received",
+      message: `A freelancer has applied for your task "${task.title}".`,
+      link: "/client/applications",
     });
 
     return res.status(201).json({
@@ -351,11 +361,30 @@ const updateApplicationStatus = async (req, res) => {
       }
     });
 
+    await createNotification({
+      recipient: updatedApplication.freelancer,
+      sender: clientId,
+      type:
+        status === "accepted"
+          ? "application_accepted"
+          : "application_rejected",
+      title:
+        status === "accepted"
+          ? "Application accepted!"
+          : "Application rejected",
+      message:
+        status === "accepted"
+          ? "Congratulations! Your application has been accepted."
+          : "Your application was not selected this time.",
+      link: "/freelancer/applications",
+    });
+
     return res.status(200).json({
       success: true,
       message: `Application ${status} successfully.`,
       application: updatedApplication,
     });
+
 
   } catch (error) {
     console.error("Update application status error:", error);

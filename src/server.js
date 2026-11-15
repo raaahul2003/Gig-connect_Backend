@@ -8,6 +8,7 @@ const taskRoutes = require("./routes/taskRoutes");
 const applicationRoutes = require("./routes/applicationRoutes");
 const submissionRoutes = require("./routes/submissionRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const app = express();
 
 // Middleware
@@ -34,6 +35,8 @@ app.use("/api/applications", applicationRoutes);
 app.use("/api/submissions", submissionRoutes);
 
 app.use("/api/payments", paymentRoutes);
+
+app.use("/api/notifications", notificationRoutes);
 
 
 const startServer = async () => {

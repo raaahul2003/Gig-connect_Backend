@@ -2,6 +2,7 @@
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
+const { createNotification } = require("./notificationController");
 
 const Submission = require("../models/Submission");
 const Application = require("../models/Application");
@@ -63,6 +64,7 @@ const createSubmission = async (req, res) => {
             status: "accepted",
         });
 
+
         if (!application) {
             deleteUploadedFiles(uploadedFiles);
             return res.status(403).json({
@@ -114,6 +116,15 @@ const createSubmission = async (req, res) => {
             description: description.trim(),
             files,
             revisionOf: revisionOf || null,
+        });
+
+        await createNotification({
+            recipient: task.client,
+            sender: freelancerId,
+            type: "submission_received",
+            title: "New work submission received",
+            message: `A freelancer has submitted work for your task "${task.title}".`,
+            link: "/client/submissions",
         });
 
         return res.status(201).json({
@@ -348,6 +359,28 @@ const reviewSubmission = async (req, res) => {
 
             reviewedSubmission = submission;
         });
+
+        if (status === "revision_requested") {
+            await createNotification({
+                recipient: reviewedSubmission.freelancer,
+                sender: clientId,
+                type: "revision_requested",
+                title: "Revision requested",
+                message: `The client requested changes to your submission. Feedback: ${reviewedSubmission.feedback}`,
+                link: "/freelancer/submissions",
+            });
+        }
+
+        if (status === "approved") {
+            await createNotification({
+                recipient: reviewedSubmission.freelancer,
+                sender: clientId,
+                type: "submission_approved",
+                title: "Work approved!",
+                message: "Your submitted work has been approved by the client.",
+                link: "/freelancer/submissions",
+            });
+        }
 
         return res.status(200).json({
             message:
