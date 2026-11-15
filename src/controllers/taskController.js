@@ -89,4 +89,67 @@ const createTask = async (req, res) => {
   }
 };
 
-module.exports = { createTask };
+const getTasks = async (req, res) => {
+  try {
+    const tasks = await Task.find({ status: "open" }).sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      tasks,
+    });
+  } catch (error) {
+    console.error("Get tasks error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch tasks.",
+    });
+  }
+};
+
+const getTaskById = async (req, res) => {
+  try {
+    const task = await Task.findById(req.params.taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      task,
+    });
+  } catch (error) {
+    console.error("Get task error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch task.",
+    });
+  }
+};
+
+// Get tasks posted by the logged-in client
+const getMyTasks = async (req, res) => {
+  try {
+    const clientId = req.user.userId;
+
+    const tasks = await Task.find({ client: clientId })
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      tasks,
+    });
+  } catch (error) {
+    console.error("Get My Tasks Error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch your tasks",
+    });
+  }
+};
+
+module.exports = { createTask, getTasks, getTaskById, getMyTasks };
