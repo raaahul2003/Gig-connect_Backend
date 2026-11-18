@@ -35,11 +35,6 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
-    estimatedMinutes: {
-      type: Number,
-      enum: [30, 60, 120, 240, 480],
-      required: true,
-    },
     isUrgent: {
       type: Boolean,
       default: false,

@@ -9,6 +9,8 @@ const applicationRoutes = require("./routes/applicationRoutes");
 const submissionRoutes = require("./routes/submissionRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const messageRoutes = require("./routes/messageRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 const app = express();
 
 // Middleware
@@ -37,6 +39,10 @@ app.use("/api/submissions", submissionRoutes);
 app.use("/api/payments", paymentRoutes);
 
 app.use("/api/notifications", notificationRoutes);
+
+app.use("/api/messages", messageRoutes);
+
+app.use("/api/ai", aiRoutes);
 
 
 const startServer = async () => {

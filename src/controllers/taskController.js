@@ -10,7 +10,6 @@ const createTask = async (req, res) => {
       deliverables,
       budget,
       deadline,
-      estimatedMinutes,
       isUrgent,
     } = req.body;
 
@@ -20,8 +19,7 @@ const createTask = async (req, res) => {
       !description ||
       !deliverables ||
       budget === undefined ||
-      !deadline ||
-      estimatedMinutes === undefined
+      !deadline
     ) {
       return res.status(400).json({
         success: false,
@@ -31,7 +29,6 @@ const createTask = async (req, res) => {
 
     const parsedBudget = Number(budget);
     const parsedDeadline = new Date(deadline);
-    const parsedMinutes = Number(estimatedMinutes);
 
     if (!Number.isFinite(parsedBudget) || parsedBudget < 1) {
       return res.status(400).json({
@@ -50,13 +47,6 @@ const createTask = async (req, res) => {
       });
     }
 
-    if (![30, 60, 120, 240, 480].includes(parsedMinutes)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid estimated duration.",
-      });
-    }
-
     const task = await Task.create({
       title,
       category,
@@ -69,7 +59,6 @@ const createTask = async (req, res) => {
       deliverables,
       budget: parsedBudget,
       deadline: parsedDeadline,
-      estimatedMinutes: parsedMinutes,
       isUrgent: Boolean(isUrgent),
       client: req.user.userId,
     });
@@ -108,12 +97,17 @@ const getTasks = async (req, res) => {
 
 const getTaskById = async (req, res) => {
   try {
-    const task = await Task.findById(req.params.taskId);
+    // Public task details are available only while freelancers can still apply.
+    // Accepted, completed, and cancelled tasks must not remain discoverable by URL.
+    const task = await Task.findOne({
+      _id: req.params.taskId,
+      status: "open",
+    });
 
     if (!task) {
       return res.status(404).json({
         success: false,
-        message: "Task not found.",
+        message: "Task is no longer available.",
       });
     }
 
