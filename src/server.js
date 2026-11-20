@@ -11,6 +11,7 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const aiRoutes = require("./routes/aiRoutes");
+const userRoutes = require("./routes/userRoutes");
 const app = express();
 
 // Middleware
@@ -43,6 +44,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/messages", messageRoutes);
 
 app.use("/api/ai", aiRoutes);
+
+app.use("/api/users", userRoutes);
 
 
 const startServer = async () => {

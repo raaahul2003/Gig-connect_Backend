@@ -1,8 +1,39 @@
+
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// Freelancer portfolio schema
+const portfolioSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+    },
+    imageUrl: {
+      type: String,
+      trim: true,
+    },
+    projectUrl: {
+      type: String,
+      trim: true,
+    },
+    technologies: {
+      type: [String],
+      default: [],
+    },
+  },
+  { timestamps: true }
+);
+
 const userSchema = new mongoose.Schema(
   {
+    // Existing authentication fields
     name: {
       type: String,
       required: true,
@@ -27,6 +58,69 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["client", "freelancer", "admin"],
       default: "freelancer",
+    },
+
+    // Common public profile fields
+    profile: {
+      photoUrl: {
+        type: String,
+        default: "",
+      },
+
+      bio: {
+        type: String,
+        default: "",
+        maxlength: 1000,
+      },
+
+      location: {
+        type: String,
+        default: "",
+      },
+    },
+
+    // Freelancer profile
+    freelancerProfile: {
+      headline: {
+        type: String,
+        default: "",
+        maxlength: 120,
+      },
+
+      skills: {
+        type: [String],
+        default: [],
+      },
+
+      experience: {
+        type: String,
+        default: "",
+        maxlength: 2000,
+      },
+
+      portfolio: {
+        type: [portfolioSchema],
+        default: [],
+      },
+    },
+
+    // Client profile
+    clientProfile: {
+      companyName: {
+        type: String,
+        default: "",
+      },
+
+      companyWebsite: {
+        type: String,
+        default: "",
+      },
+
+      companyDescription: {
+        type: String,
+        default: "",
+        maxlength: 1000,
+      },
     },
   },
   {
