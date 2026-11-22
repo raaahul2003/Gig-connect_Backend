@@ -1,7 +1,11 @@
-
 const mongoose = require("mongoose");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const { Readable } = require("stream");
+const { pipeline } = require("stream/promises");
+
+const { cloudinary } = require("../config/cloudinary");
 const { createNotification } = require("./notificationController");
 
 const Submission = require("../models/Submission");
@@ -9,137 +13,201 @@ const Application = require("../models/Application");
 const Task = require("../models/Task");
 const Payment = require("../models/Payment");
 
-// Helper: Delete uploaded files if submission creation fails
-const deleteUploadedFiles = (files = []) => {
-    files.forEach((file) => {
-        if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-        }
+
+
+const uploadBufferToCloudinary = (file) => {
+    return new Promise((resolve, reject) => {
+        const extension = path.extname(file.originalname).toLowerCase();
+
+        const publicId =
+            `gigconnect/submissions/${crypto.randomUUID()}${extension}`;
+
+        const uploadStream = cloudinary.uploader.upload_stream(
+            {
+                resource_type: "raw",
+                type: "authenticated",
+                public_id: publicId,
+                overwrite: false,
+            },
+            (error, result) => {
+                if (error) {
+                    return reject(error);
+                }
+
+                resolve(result);
+            }
+        );
+
+        uploadStream.end(file.buffer);
     });
 };
 
-// 1. Freelancer submits work
-const createSubmission = async (req, res) => {
-    try {
-        const { description, revisionOf } = req.body;
-        const { taskId } = req.params;
-
-        if (!mongoose.Types.ObjectId.isValid(taskId)) {
-            deleteUploadedFiles(req.files || []);
-            return res.status(400).json({
-                message: "Invalid task ID.",
-            });
-        }
-
-        const freelancerId = req.user.userId;
-        const uploadedFiles = req.files || [];
-
-        if (!description || description.trim().length === 0) {
-            deleteUploadedFiles(uploadedFiles);
-            return res.status(400).json({
-                message: "Submission description is required.",
-            });
-        }
-
-        const task = await Task.findById(taskId);
-
-        if (!task) {
-            deleteUploadedFiles(uploadedFiles);
-            return res.status(404).json({
-                message: "Task not found.",
-            });
-        }
-
-        if (task.status !== "in_progress") {
-            deleteUploadedFiles(uploadedFiles);
-            return res.status(400).json({
-                message: "This task is not accepting submissions.",
-            });
-        }
-
-        // Check whether this freelancer has an accepted application
-        const application = await Application.findOne({
-            task: taskId,
-            freelancer: freelancerId,
-            status: "accepted",
-        });
-
-
-        if (!application) {
-            deleteUploadedFiles(uploadedFiles);
-            return res.status(403).json({
-                message: "You are not authorized to submit work for this task.",
-            });
-        }
-
-        // Find the latest submission for this task and freelancer
-        const latestSubmission = await Submission.findOne({
-            task: taskId,
-            freelancer: freelancerId,
-        }).sort({ createdAt: -1 });
-
-        // First submission
-        if (!latestSubmission && revisionOf) {
-            deleteUploadedFiles(uploadedFiles);
-            return res.status(400).json({
-                message: "Invalid revision reference.",
-            });
-        }
-
-        // Resubmission after revision request
-        if (latestSubmission) {
-            if (
-                latestSubmission.status !== "revision_requested" ||
-                !revisionOf ||
-                revisionOf.toString() !== latestSubmission._id.toString()
-            ) {
-                deleteUploadedFiles(uploadedFiles);
-                return res.status(400).json({
-                    message: "A revision has not been requested for your latest submission.",
-                });
-            }
-        }
-
-        const files = uploadedFiles.map((file) => ({
-            originalName: file.originalname,
-            filename: file.filename,
-            path: `uploads/submissions/${file.filename}`,
-            mimetype: file.mimetype,
-            size: file.size,
-        }));
-
-        const submission = await Submission.create({
-            task: taskId,
-            application: application._id,
-            freelancer: freelancerId,
-            client: task.client,
-            description: description.trim(),
-            files,
-            revisionOf: revisionOf || null,
-        });
-
-        await createNotification({
-            recipient: task.client,
-            sender: freelancerId,
-            type: "submission_received",
-            title: "New work submission received",
-            message: `A freelancer has submitted work for your task "${task.title}".`,
-            link: "/client/submissions",
-        });
-
-        return res.status(201).json({
-            message: "Work submitted successfully.",
-            submission,
-        });
-    } catch (error) {
-        deleteUploadedFiles(req.files || []);
-        console.error("Create submission error:", error);
-
-        return res.status(500).json({
-            message: "Failed to submit work.",
-        });
-    }
+// Delete uploaded Cloudinary files if database creation fails
+const deleteCloudinaryFiles = async (files = []) => {
+    await Promise.allSettled(
+        files.map((file) =>
+            cloudinary.uploader.destroy(file.public_id, {
+                resource_type: "raw",
+                type: "authenticated",
+            })
+        )
+    );
 };
+
+
+const createSubmission = async (req, res) => {
+  let cloudinaryUploads = [];
+  let submissionSaved = false;
+
+  try {
+    const { description, revisionOf } = req.body;
+    const { taskId } = req.params;
+
+    const freelancerId = req.user.userId;
+    const uploadedFiles = req.files || [];
+
+    if (!mongoose.Types.ObjectId.isValid(taskId)) {
+      return res.status(400).json({
+        message: "Invalid task ID.",
+      });
+    }
+
+    if (!description || description.trim().length === 0) {
+      return res.status(400).json({
+        message: "Submission description is required.",
+      });
+    }
+
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found.",
+      });
+    }
+
+    if (task.status !== "in_progress") {
+      return res.status(400).json({
+        message: "This task is not accepting submissions.",
+      });
+    }
+
+    // Check accepted application
+    const application = await Application.findOne({
+      task: taskId,
+      freelancer: freelancerId,
+      status: "accepted",
+    });
+
+    if (!application) {
+      return res.status(403).json({
+        message: "You are not authorized to submit work for this task.",
+      });
+    }
+
+    // Find latest submission
+    const latestSubmission = await Submission.findOne({
+      task: taskId,
+      freelancer: freelancerId,
+    }).sort({ createdAt: -1 });
+
+    if (!latestSubmission && revisionOf) {
+      return res.status(400).json({
+        message: "Invalid revision reference.",
+      });
+    }
+
+    if (latestSubmission) {
+      if (
+        latestSubmission.status !== "revision_requested" ||
+        !revisionOf ||
+        revisionOf.toString() !== latestSubmission._id.toString()
+      ) {
+        return res.status(400).json({
+          message:
+            "A revision has not been requested for your latest submission.",
+        });
+      }
+    }
+
+    // Upload files to Cloudinary
+    const files = [];
+
+    for (const file of uploadedFiles) {
+      const result = await uploadBufferToCloudinary(file);
+
+      cloudinaryUploads.push(result);
+
+      files.push({
+        originalName: file.originalname,
+
+        // Retained for compatibility
+        filename: result.public_id,
+        path: "",
+
+        // Cloudinary details
+        publicId: result.public_id,
+        assetId: result.asset_id,
+        resourceType: "raw",
+        deliveryType: "authenticated",
+        format:
+          result.format ||
+          path.extname(file.originalname).slice(1).toLowerCase(),
+
+        mimetype: file.mimetype,
+        size: file.size,
+      });
+    }
+
+    // Save submission in MongoDB
+    const submission = await Submission.create({
+      task: taskId,
+      application: application._id,
+      freelancer: freelancerId,
+      client: task.client,
+      description: description.trim(),
+      files,
+      revisionOf: revisionOf || null,
+    });
+
+    submissionSaved = true;
+
+    // Notification should not undo a successful submission
+    try {
+      await createNotification({
+        recipient: task.client,
+        sender: freelancerId,
+        type: "submission_received",
+        title: "New work submission received",
+        message: `A freelancer has submitted work for your task "${task.title}".`,
+        link: "/client/submissions",
+      });
+    } catch (notificationError) {
+      console.error(
+        "Submission notification error:",
+        notificationError
+      );
+    }
+
+    return res.status(201).json({
+      message: "Work submitted successfully.",
+      submission,
+    });
+
+  } catch (error) {
+    console.error("Create submission error:", error);
+
+    // Clean up Cloudinary uploads only if the DB save failed
+    if (!submissionSaved) {
+      await deleteCloudinaryFiles(cloudinaryUploads);
+    }
+
+    return res.status(500).json({
+      message: "Failed to submit work.",
+    });
+  }
+};
+
 
 // 2. Freelancer views their submissions
 const getMySubmissions = async (req, res) => {
@@ -187,74 +255,135 @@ const getSubmissionsForClient = async (req, res) => {
 };
 
 // View or download a submission file
+
 const downloadSubmissionFile = async (req, res) => {
-    try {
-        const { submissionId, fileId } = req.params;
-        const userId = req.user.userId;
+  try {
+    const { submissionId, fileId } = req.params;
+    const userId = req.user.userId;
 
-        if (
-            !mongoose.Types.ObjectId.isValid(submissionId) ||
-            !mongoose.Types.ObjectId.isValid(fileId)
-        ) {
-            return res.status(400).json({
-                message: "Invalid submission or file ID.",
-            });
-        }
+    if (
+      !mongoose.Types.ObjectId.isValid(submissionId) ||
+      !mongoose.Types.ObjectId.isValid(fileId)
+    ) {
+      return res.status(400).json({
+        message: "Invalid submission or file ID.",
+      });
+    }
 
-        const submission = await Submission.findById(submissionId);
+    const submission = await Submission.findById(submissionId);
 
-        if (!submission) {
-            return res.status(404).json({
-                message: "Submission not found.",
-            });
-        }
+    if (!submission) {
+      return res.status(404).json({
+        message: "Submission not found.",
+      });
+    }
 
-        // Only the submitting freelancer or task-owning client
-        // can access the files.
-        const isFreelancer =
-            submission.freelancer.toString() === userId;
+    // Only freelancer or task-owning client can download
+    const isFreelancer =
+      submission.freelancer.toString() === userId;
 
-        const isClient =
-            submission.client.toString() === userId;
+    const isClient =
+      submission.client.toString() === userId;
 
-        if (!isFreelancer && !isClient) {
-            return res.status(403).json({
-                message: "You are not authorized to access this file.",
-            });
-        }
+    if (!isFreelancer && !isClient) {
+      return res.status(403).json({
+        message: "You are not authorized to access this file.",
+      });
+    }
 
-        const file = submission.files.id(fileId);
+    const file = submission.files.id(fileId);
 
-        if (!file) {
-            return res.status(404).json({
-                message: "File not found.",
-            });
-        }
+    if (!file) {
+      return res.status(404).json({
+        message: "File not found.",
+      });
+    }
 
-        const filePath = path.resolve(
-            __dirname,
-            "..",
-            "uploads",
-            "submissions",
-            path.basename(file.filename)
+    // New Cloudinary storage
+    if (file.publicId) {
+      const format =
+        file.format ||
+        path.extname(file.originalName).slice(1).toLowerCase();
+
+      const downloadUrl =
+        cloudinary.utils.private_download_url(
+          file.publicId,
+          format,
+          {
+            resource_type: file.resourceType || "raw",
+            type: file.deliveryType || "authenticated",
+            expires_at: Math.floor(Date.now() / 1000) + 300,
+            attachment: true,
+          }
         );
 
-        if (!fs.existsSync(filePath)) {
-            return res.status(404).json({
-                message: "The requested file is no longer available.",
-            });
-        }
+      const cloudinaryResponse = await fetch(downloadUrl);
 
-        return res.download(filePath, file.originalName);
-
-    } catch (error) {
-        console.error("Download submission file error:", error);
-
-        return res.status(500).json({
-            message: "Failed to access submission file.",
+      if (!cloudinaryResponse.ok || !cloudinaryResponse.body) {
+        return res.status(502).json({
+          message: "Unable to retrieve the stored file.",
         });
+      }
+
+      // Stream the file through our backend.
+      // This preserves the existing frontend Blob download flow.
+      res.setHeader(
+        "Content-Type",
+        file.mimetype || "application/octet-stream"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(file.originalName)}`
+      );
+
+      const contentLength =
+        cloudinaryResponse.headers.get("content-length");
+
+      if (contentLength) {
+        res.setHeader("Content-Length", contentLength);
+      }
+
+      await pipeline(
+        Readable.fromWeb(cloudinaryResponse.body),
+        res
+      );
+
+      return;
     }
+
+    // Backward compatibility for older local submissions
+    if (file.filename) {
+      const filePath = path.resolve(
+        __dirname,
+        "..",
+        "uploads",
+        "submissions",
+        path.basename(file.filename)
+      );
+
+      if (fs.existsSync(filePath)) {
+        return res.download(filePath, file.originalName);
+      }
+    }
+
+    return res.status(404).json({
+      message: "The requested file is no longer available.",
+    });
+
+  } catch (error) {
+    console.error("Download submission file error:", error);
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        message: "Failed to access submission file.",
+      });
+    }
+
+    res.destroy(error);
+  }
 };
+
 
 // 4. Client approves work or requests revisions
 const reviewSubmission = async (req, res) => {

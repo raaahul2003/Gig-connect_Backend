@@ -39,18 +39,46 @@ const submissionSchema = new mongoose.Schema(
           type: String,
           required: true,
         },
+
+        // Retained for compatibility with old local files
         filename: {
           type: String,
-          required: true,
+          default: "",
         },
+
         path: {
           type: String,
-          required: true,
+          default: "",
         },
+
+        // Cloudinary storage details
+        publicId: {
+          type: String,
+        },
+
+        assetId: {
+          type: String,
+        },
+
+        resourceType: {
+          type: String,
+          default: "raw",
+        },
+
+        deliveryType: {
+          type: String,
+          default: "authenticated",
+        },
+
+        format: {
+          type: String,
+        },
+
         mimetype: {
           type: String,
           required: true,
         },
+
         size: {
           type: Number,
           required: true,
