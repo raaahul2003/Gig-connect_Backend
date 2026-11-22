@@ -7,7 +7,7 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 // Register a new user
 const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password, role, clientType } = req.body;
 
     // 1. Check required fields
     if (!name || !email || !password) {
@@ -22,6 +22,18 @@ const registerUser = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid account role",
+      });
+    }
+
+    // Validate client type
+    if (
+      role === "client" &&
+      clientType &&
+      !["individual", "company"].includes(clientType)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client type",
       });
     }
 
@@ -43,6 +55,7 @@ const registerUser = async (req, res) => {
       email,
       password,
       role: role || "freelancer",
+      clientType: role === "client" ? clientType || "individual" : undefined,
     });
 
     // 5. Send response without password
@@ -54,6 +67,7 @@ const registerUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        clientType: user.clientType,
       },
     });
   } catch (error) {
@@ -191,12 +205,23 @@ const googleLogin = async (req, res) => {
 
 const completeGoogleRegistration = async (req, res) => {
   try {
-    const { credential, role } = req.body;
+    const { credential, role, clientType } = req.body;
 
     if (!credential || !["client", "freelancer"].includes(role)) {
       return res.status(400).json({
         success: false,
         message: "Google credential and a valid role are required.",
+      });
+    }
+
+    if (
+      role === "client" &&
+      clientType &&
+      !["individual", "company"].includes(clientType)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid client type",
       });
     }
 
@@ -228,6 +253,7 @@ const completeGoogleRegistration = async (req, res) => {
       name: payload.name || email,
       email,
       role,
+      clientType: role === "client" ? clientType || "individual" : undefined,
     });
 
     const token = jwt.sign(
@@ -244,6 +270,7 @@ const completeGoogleRegistration = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        clientType: user.clientType,
       },
     });
   } catch (error) {
@@ -257,4 +284,4 @@ const completeGoogleRegistration = async (req, res) => {
 
 
 
-module.exports = { registerUser ,loginUser ,googleLogin ,completeGoogleRegistration };
+module.exports = { registerUser, loginUser, googleLogin, completeGoogleRegistration };

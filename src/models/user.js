@@ -60,6 +60,13 @@ const userSchema = new mongoose.Schema(
       default: "freelancer",
     },
 
+    // Client account type
+    clientType: {
+      type: String,
+      enum: ["individual", "company"],
+      default: "individual",
+    },
+
     // Common public profile fields
     profile: {
       photoUrl: {
@@ -120,6 +127,31 @@ const userSchema = new mongoose.Schema(
         type: String,
         default: "",
         maxlength: 1000,
+      },
+    },
+    reputation: {
+      score: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100,
+      },
+      lastCalculatedAt: {
+        type: Date,
+        default: null,
+      },
+      adminAdjustment: {
+        type: Number,
+        default: 0,
+      },
+      adminAdjustmentReason: {
+        type: String,
+        default: "",
+      },
+      lastAdjustedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
       },
     },
   },

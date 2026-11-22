@@ -1,6 +1,11 @@
 const User = require("../models/user");
 const Submission = require("../models/Submission");
 const mongoose = require("mongoose");
+const Task = require("../models/Task");
+
+const {
+  calculateFreelancerScore,
+} = require("../services/freelancerScoreService");
 
 // GET LOGGED-IN USER'S PROFILE
 const getMyProfile = async (req, res) => {
@@ -95,31 +100,61 @@ const updateMyProfile = async (req, res) => {
   }
 };
 
+
 // GET ANOTHER USER'S PUBLIC PROFILE
 const getPublicProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.params.userId)
-      .select("name role profile freelancerProfile clientProfile createdAt");
+    let user = await User.findById(req.params.userId)
+      .select("name role clientType profile freelancerProfile clientProfile createdAt");
 
     if (!user) {
-      return res.status(404).json({ message: "User not found" });
+      return res.status(404).json({
+        message: "User not found",
+      });
     }
 
-    res.status(200).json({
+    let freelancerScore = null;
+    let clientHiringHistory = [];
+
+    // Get completed tasks posted by this client
+    if (user.role === "client") {
+      clientHiringHistory = await Task.find({
+        client: user._id,
+        status: "completed",
+      })
+        .select("title category createdAt updatedAt")
+        .sort({ updatedAt: -1 });
+    }
+
+    // Calculate score only for freelancer profiles
+    if (user.role === "freelancer") {
+      freelancerScore = await calculateFreelancerScore(user._id);
+
+      user = await User.findById(user._id)
+        .select("name role clientType profile freelancerProfile clientProfile createdAt reputation.score reputation.lastCalculatedAt");
+    }
+
+    return res.status(200).json({
       message: "Public profile fetched successfully",
       user,
+      freelancerScore,
+      clientHiringHistory
     });
   } catch (error) {
+    console.error("Public profile error:", error);
+
     if (error.name === "CastError") {
-      return res.status(400).json({ message: "Invalid user ID" });
+      return res.status(400).json({
+        message: "Invalid user ID",
+      });
     }
 
-    res.status(500).json({
+    return res.status(500).json({
       message: "Failed to fetch public profile",
-      error: error.message,
     });
   }
 };
+
 
 // GET FREELANCER'S VERIFIED COMPLETED WORK
 const getFreelancerWorkHistory = async (req, res) => {

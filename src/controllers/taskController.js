@@ -80,7 +80,9 @@ const createTask = async (req, res) => {
 
 const getTasks = async (req, res) => {
   try {
-    const tasks = await Task.find({ status: "open" }).sort({ createdAt: -1 });
+    const tasks = await Task.find({ status: "open" })
+      .populate("client", "name role clientType clientProfile.companyName")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -102,7 +104,10 @@ const getTaskById = async (req, res) => {
     const task = await Task.findOne({
       _id: req.params.taskId,
       status: "open",
-    });
+    }).populate(
+      "client",
+      "name role clientType clientProfile.companyName"
+    );
 
     if (!task) {
       return res.status(404).json({
