@@ -21,51 +21,71 @@ const getApplicationForUser = async (applicationId, userId) => {
   return { application, isFreelancer };
 };
 
+
 const getMyConversations = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const clientTaskIds = await Task.find({ client: userId }).distinct("_id");
+
+    const clientTaskIds = await Task.find({
+      client: userId
+    }).distinct("_id");
 
     const applications = await Application.find({
       $or: [
         { freelancer: userId },
-        { task: { $in: clientTaskIds } },
-      ],
+        { task: { $in: clientTaskIds } }
+      ]
     })
       .populate("freelancer", "name")
       .populate({
         path: "task",
         select: "title client",
-        populate: { path: "client", select: "name" },
+        populate: {
+          path: "client",
+          select: "name"
+        }
       })
       .sort({ updatedAt: -1 });
 
-    const conversations = applications.map((application) => {
-      const isFreelancer =
-        String(application.freelancer._id) === String(userId);
+    const conversations = applications
+      .filter((application) => {
+        // Skip applications with deleted references
+        return application.task && application.freelancer;
+      })
+      .map((application) => {
+        const isFreelancer =
+          String(application.freelancer._id) === String(userId);
 
-      return {
-        applicationId: application._id,
-        user: isFreelancer
+        const otherUser = isFreelancer
           ? application.task.client
-          : application.freelancer,
-        taskTitle: application.task.title,
-      };
-    });
+          : application.freelancer;
+
+        // Skip conversations where the other user was deleted
+        if (!otherUser) return null;
+
+        return {
+          applicationId: application._id,
+          user: otherUser,
+          taskTitle: application.task.title
+        };
+      })
+      .filter(Boolean);
 
     return res.status(200).json({
       success: true,
-      conversations,
+      conversations
     });
+
   } catch (error) {
     console.error("Get conversations error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch conversations.",
+      message: "Failed to fetch conversations."
     });
   }
 };
+
 
 const getMessages = async (req, res) => {
   try {
