@@ -126,7 +126,7 @@ const userSchema = new mongoose.Schema(
       companyDescription: {
         type: String,
         default: "",
-        maxlength: 1000,
+        maxlength: 2000,
       },
     },
     reputation: {
