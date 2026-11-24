@@ -23,18 +23,21 @@ const applicationSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
-    deliveryHours: {
-      type: Number,
-      required: true,
-      enum: [2, 6, 12, 24, 48, 72],
-    },
-    status: {
+    deliveryDate: {
       type: String,
-      enum: ["pending", "accepted", "rejected"],
-      default: "pending",
+      required: true,
+      match: [
+        /^\d{4}-\d{2}-\d{2}$/,
+        "Please provide a valid delivery date (YYYY-MM-DD).",
+      ],
     },
+  status: {
+  type: String,
+  enum: ["pending", "accepted", "rejected"],
+  default: "pending",
+},
   },
-  { timestamps: true }
+{ timestamps: true }
 );
 
 // Prevent the same freelancer from applying to a task more than once.

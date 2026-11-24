@@ -5,7 +5,7 @@ const { createNotification } = require("./notificationController");
 
 const createApplication = async (req, res) => {
   try {
-    const { proposal, bidAmount, deliveryHours } = req.body;
+    const { proposal, bidAmount, deliveryDate } = req.body;
     const { taskId } = req.params;
     const freelancerId = req.user.userId;
 
@@ -17,19 +17,11 @@ const createApplication = async (req, res) => {
     }
 
     const parsedBid = Number(bidAmount);
-    const parsedHours = Number(deliveryHours);
 
     if (!Number.isFinite(parsedBid) || parsedBid < 1) {
       return res.status(400).json({
         success: false,
         message: "Bid amount must be greater than zero.",
-      });
-    }
-
-    if (![2, 6, 12, 24, 48, 72].includes(parsedHours)) {
-      return res.status(400).json({
-        success: false,
-        message: "Choose a valid delivery time.",
       });
     }
 
@@ -39,6 +31,91 @@ const createApplication = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Task not found.",
+      });
+    }
+
+    // Validate delivery date
+    const isValidDateFormat =
+      typeof deliveryDate === "string" &&
+      /^\d{4}-\d{2}-\d{2}$/.test(deliveryDate);
+
+    if (!isValidDateFormat) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a valid delivery date.",
+      });
+    }
+
+    // Verify that the date is a real calendar date
+    const parsedDeliveryDate = new Date(`${deliveryDate}T00:00:00.000Z`);
+
+    if (
+      Number.isNaN(parsedDeliveryDate.getTime()) ||
+      parsedDeliveryDate.toISOString().slice(0, 10) !== deliveryDate
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid delivery date.",
+      });
+    }
+
+    // Get today's date in India
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    // Convert client's deadline into a date-only value
+    const taskDeadline = task.deadline
+      ? new Date(task.deadline).toISOString().slice(0, 10)
+      : null;
+
+    if (!taskDeadline) {
+      return res.status(400).json({
+        success: false,
+        message: "This task does not have a valid deadline.",
+      });
+    }
+
+    if (taskDeadline < today) {
+      return res.status(400).json({
+        success: false,
+        message: "This task deadline has already expired.",
+      });
+    }
+
+    if (deliveryDate < today) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery date cannot be in the past.",
+      });
+    }
+
+    if (deliveryDate > taskDeadline) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery date cannot exceed the client's task deadline.",
+      });
+    }
+
+
+
+    // Prevent freelancers from bidding above the client's budget
+    const taskBudget = Number(task.budget);
+
+    if (!Number.isFinite(taskBudget) || taskBudget <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "This task has an invalid budget.",
+      });
+    }
+
+    if (parsedBid > taskBudget) {
+      return res.status(400).json({
+        success: false,
+        message: `Your proposed price cannot exceed the task budget of ₹${taskBudget}.`,
       });
     }
 
@@ -61,7 +138,7 @@ const createApplication = async (req, res) => {
       freelancer: freelancerId,
       proposal: proposal.trim(),
       bidAmount: parsedBid,
-      deliveryHours: parsedHours,
+      deliveryDate,
     });
 
     await createNotification({
