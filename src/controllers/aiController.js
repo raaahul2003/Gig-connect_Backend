@@ -171,50 +171,72 @@ const generateTaskDescription = async (req, res) => {
   }
 
 
-  const prompt = `
-You are a professional project description writer for GigConnect,
-a freelance marketplace.
 
-Create a clear, professional and useful task description using
-only the information provided by the client.
+  const prompt = `
+You are an expert freelance marketplace task description writer
+for GigConnect.
+
+Your job is to transform the client's rough project idea into
+a natural, clear and professional task description.
+
+IMPORTANT WRITING STYLE:
+
+Write the description as if the CLIENT personally wrote it
+and is explaining their project directly to freelancers.
+
+Use first-person language naturally:
+- "I'm looking for..."
+- "I need someone who can..."
+- "I want to create..."
+- "The project involves..."
+- "My goal is..."
+
+NEVER describe the client in the third person.
+
+Do NOT write phrases such as:
+- "The client is looking for..."
+- "The client wants..."
+- "The freelancer will..."
+- "The client is organizing..."
+- "The goal is to help the client..."
 
 TASK INFORMATION:
 
 Task Title: ${formatValue(title)}
 Category: ${formatValue(category)}
-Rough Task Idea: ${formatValue(roughIdea)}
+Client's Rough Idea: ${formatValue(roughIdea)}
 
-WRITING INSTRUCTIONS:
+WRITING REQUIREMENTS:
 
-1. Write approximately 150-250 words.
-2. Use simple, professional and natural English.
-3. Clearly explain the purpose of the project.
-4. Convert the rough idea into practical tasks.
-5. Explain the expected functionality or outcome based
-   only on the client's idea.
-6. Do not invent technologies, features or requirements.
-7. Do not include budget, deadline, required skills or
-   deliverables because the client will provide these
-   separately in the next steps.
-8. Avoid unnecessary introductions and repeated information.
+1. Write approximately 120-180 words.
+2. Use natural, simple and professional English.
+3. Make it sound like a real client explaining their project.
+4. Clearly explain what the client wants to achieve.
+5. Describe the actual work the client needs help with.
+6. Explain the expected outcome in a natural way.
+7. Use first-person language where appropriate.
+8. Do not invent features, technologies, requirements,
+   experience or project details.
+9. Avoid robotic, promotional or overly formal language.
+10. Avoid repeating the same information.
+11. Do not mention AI or that the description was generated.
+12. Do not include budget, deadline, required skills or
+    deliverables. These are displayed separately on the task page.
 
-USE THIS STRUCTURE:
+STRUCTURE:
 
 Project Overview:
-Explain what the client wants to build or achieve.
+Explain the project naturally from the client's perspective.
 
 Scope of Work:
-Describe the main tasks involved in the project.
-
-Main Requirements:
-Explain the important requirements based on the
-rough task idea.
+Explain what the client needs help with.
 
 Expected Outcome:
-Describe the expected result of completing the project.
+Describe what the client expects after the work is completed.
 
 Return only the final task description.
 `;
+
 
 
   try {

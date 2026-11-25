@@ -13,6 +13,29 @@ const createTask = async (req, res) => {
       isUrgent,
     } = req.body;
 
+    const submissionKey = req.get("Idempotency-Key")?.trim();
+
+    if (!submissionKey || submissionKey.length > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid task submission key is required.",
+      });
+    }
+
+    // Return the existing task if this request was already processed.
+    const existingTask = await Task.findOne({
+      client: req.user.userId,
+      submissionKey,
+    });
+
+    if (existingTask) {
+      return res.status(200).json({
+        success: true,
+        message: "Task was already created.",
+        task: existingTask,
+      });
+    }
+
     if (
       !title ||
       !category ||
@@ -61,6 +84,7 @@ const createTask = async (req, res) => {
       deadline: parsedDeadline,
       isUrgent: Boolean(isUrgent),
       client: req.user.userId,
+      submissionKey,
     });
 
     return res.status(201).json({
@@ -69,11 +93,27 @@ const createTask = async (req, res) => {
       task,
     });
   } catch (error) {
+    // Handle simultaneous requests using the same submission key.
+    if (error.code === 11000) {
+      const existingTask = await Task.findOne({
+        client: req.user.userId,
+        submissionKey: req.get("Idempotency-Key")?.trim(),
+      });
+
+      if (existingTask) {
+        return res.status(200).json({
+          success: true,
+          message: "Task was already created.",
+          task: existingTask,
+        });
+      }
+    }
+
     console.error("Create task error:", error);
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to create task.",
     });
   }
 };
@@ -151,4 +191,41 @@ const getMyTasks = async (req, res) => {
   }
 };
 
-module.exports = { createTask, getTasks, getTaskById, getMyTasks };
+const deleteTask = async (req, res) => {
+  try {
+    const task = await Task.findOne({
+      _id: req.params.taskId,
+      client: req.user.userId,
+    });
+
+    if (!task) {
+      return res.status(404).json({
+        success: false,
+        message: "Task not found.",
+      });
+    }
+
+    if (task.status !== "open") {
+      return res.status(403).json({
+        success: false,
+        message: "Only open tasks can be deleted.",
+      });
+    }
+
+    await Task.findByIdAndDelete(task._id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Task deleted successfully.",
+    });
+  } catch (error) {
+    console.error("Delete task error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete task.",
+    });
+  }
+};
+
+module.exports = { createTask, getTasks, getTaskById, getMyTasks, deleteTask };
