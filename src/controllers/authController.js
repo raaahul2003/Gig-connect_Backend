@@ -1,15 +1,17 @@
 const User = require("../models/user");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
-
+const crypto = require("crypto");
+const sendVerificationEmail = require("../utils/sendVerificationEmail");
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Register a new user
 const registerUser = async (req, res) => {
+  let user;
+
   try {
     const { name, email, password, role, clientType } = req.body;
 
-    // 1. Check required fields
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -17,7 +19,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // 2. Prevent public admin registration
     if (role && !["client", "freelancer"].includes(role)) {
       return res.status(400).json({
         success: false,
@@ -25,7 +26,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // Validate client type
     if (
       role === "client" &&
       clientType &&
@@ -37,9 +37,10 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // 3. Check whether email already exists
+    const normalizedEmail = email.toLowerCase().trim();
+
     const existingUser = await User.findOne({
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
     });
 
     if (existingUser) {
@@ -49,19 +50,35 @@ const registerUser = async (req, res) => {
       });
     }
 
-    // 4. Create user
-    const user = await User.create({
+    // Generate a secure verification token.
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+
+    // Store only the hashed token in MongoDB.
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(verificationToken)
+      .digest("hex");
+
+    user = await User.create({
       name,
-      email,
+      email: normalizedEmail,
       password,
       role: role || "freelancer",
-      clientType: role === "client" ? clientType || "individual" : undefined,
+      clientType:
+        role === "client" ? clientType || "individual" : undefined,
+
+      isEmailVerified: false,
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: Date.now() + 24 * 60 * 60 * 1000,
     });
 
-    // 5. Send response without password
-    res.status(201).json({
+    // Send verification email.
+    await sendVerificationEmail(user.email, verificationToken);
+
+    return res.status(201).json({
       success: true,
-      message: "Registration successful",
+      message: "Registration successful. Please check your email to verify your account.",
+      emailVerificationRequired: true,
       user: {
         id: user._id,
         name: user.name,
@@ -73,9 +90,16 @@ const registerUser = async (req, res) => {
   } catch (error) {
     console.error("Registration Error:", error);
 
-    res.status(500).json({
+    // Remove the newly created account if the email could not be sent.
+    if (user) {
+      await User.findByIdAndDelete(user._id).catch((deleteError) => {
+        console.error("Registration rollback error:", deleteError);
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: "Server error during registration",
+      message: "Could not complete registration or send verification email. Please try again.",
     });
   }
 };
@@ -112,6 +136,15 @@ const loginUser = async (req, res) => {
       return res.status(401).json({
         success: false,
         message: "Invalid email or password",
+      });
+    }
+
+    // Check email verification
+    if (user.isEmailVerified === false) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email before logging in.",
+        emailVerificationRequired: true,
       });
     }
 
@@ -254,6 +287,7 @@ const completeGoogleRegistration = async (req, res) => {
       email,
       role,
       clientType: role === "client" ? clientType || "individual" : undefined,
+      isEmailVerified: true,
     });
 
     const token = jwt.sign(
@@ -282,6 +316,46 @@ const completeGoogleRegistration = async (req, res) => {
   }
 };
 
+// Verify email address
+const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).send("Verification token is missing.");
+    }
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      emailVerificationToken: hashedToken,
+      emailVerificationExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res
+        .status(400)
+        .send("Verification link is invalid or has expired.");
+    }
+
+    user.isEmailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+
+    await user.save();
+
+    return res.redirect(
+      `${process.env.CLIENT_URL}/login?verified=true`
+    );
+  } catch (error) {
+    console.error("Email verification error:", error);
+
+    return res.status(500).send("Unable to verify email. Please try again.");
+  }
+};
 
 
-module.exports = { registerUser, loginUser, googleLogin, completeGoogleRegistration };
+module.exports = { registerUser, loginUser, googleLogin, completeGoogleRegistration, verifyEmail };

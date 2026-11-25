@@ -1,5 +1,5 @@
 const express = require("express");
-const { registerUser , loginUser ,googleLogin ,completeGoogleRegistration } = require("../controllers/authController");
+const { registerUser , loginUser ,googleLogin ,completeGoogleRegistration ,verifyEmail } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 
@@ -7,6 +7,9 @@ const router = express.Router();
 
 // Register route
 router.post("/register", registerUser);
+
+// Verify email
+router.get("/verify-email", verifyEmail);
 
 // Login route
 router.post("/login", loginUser);
