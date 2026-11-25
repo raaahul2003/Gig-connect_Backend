@@ -25,6 +25,7 @@ const notificationSchema = new mongoose.Schema(
         "revision_requested",
         "submission_approved",
         "payment_received",
+        "message_received",
       ],
       required: true,
     },
@@ -50,6 +51,7 @@ const notificationSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    
   },
   {
     timestamps: true,

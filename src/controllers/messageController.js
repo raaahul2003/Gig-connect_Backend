@@ -1,10 +1,15 @@
+
 const Application = require("../models/Application");
 const Message = require("../models/Message");
 const Task = require("../models/Task");
+const { createNotification } = require("./notificationController");
 
+// Find the application and verify that the logged-in user is a participant.
 const getApplicationForUser = async (applicationId, userId) => {
-  const application = await Application.findById(applicationId)
-    .populate("task", "title client");
+  const application = await Application.findById(applicationId).populate(
+    "task",
+    "title client status"
+  );
 
   if (!application || !application.task) {
     return { application: null, isFreelancer: false };
@@ -12,7 +17,9 @@ const getApplicationForUser = async (applicationId, userId) => {
 
   const isFreelancer =
     String(application.freelancer) === String(userId);
-  const isClient = String(application.task.client) === String(userId);
+
+  const isClient =
+    String(application.task.client) === String(userId);
 
   if (!isFreelancer && !isClient) {
     return { application: null, isFreelancer: false };
@@ -21,36 +28,49 @@ const getApplicationForUser = async (applicationId, userId) => {
   return { application, isFreelancer };
 };
 
+// A conversation is active only after acceptance and while work is in progress.
+const isConversationActive = (application) => {
+  return (
+    application.status === "accepted" &&
+    application.task?.status === "in_progress"
+  );
+};
 
+// Get active project conversations for the logged-in user.
 const getMyConversations = async (req, res) => {
   try {
     const userId = req.user.userId;
 
     const clientTaskIds = await Task.find({
-      client: userId
+      client: userId,
     }).distinct("_id");
 
     const applications = await Application.find({
+      status: "accepted",
       $or: [
         { freelancer: userId },
-        { task: { $in: clientTaskIds } }
-      ]
+        { task: { $in: clientTaskIds } },
+      ],
     })
       .populate("freelancer", "name")
       .populate({
         path: "task",
-        select: "title client",
+        select: "title client status",
         populate: {
           path: "client",
-          select: "name"
-        }
+          select: "name",
+        },
       })
       .sort({ updatedAt: -1 });
 
     const conversations = applications
       .filter((application) => {
-        // Skip applications with deleted references
-        return application.task && application.freelancer;
+        return (
+          application.task &&
+          application.freelancer &&
+          application.task.client &&
+          isConversationActive(application)
+        );
       })
       .map((application) => {
         const isFreelancer =
@@ -60,36 +80,33 @@ const getMyConversations = async (req, res) => {
           ? application.task.client
           : application.freelancer;
 
-        // Skip conversations where the other user was deleted
-        if (!otherUser) return null;
-
         return {
           applicationId: application._id,
           user: otherUser,
-          taskTitle: application.task.title
+          taskTitle: application.task.title,
+          taskStatus: application.task.status,
         };
-      })
-      .filter(Boolean);
+      });
 
     return res.status(200).json({
       success: true,
-      conversations
+      conversations,
     });
-
   } catch (error) {
     console.error("Get conversations error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch conversations."
+      message: "Failed to fetch conversations.",
     });
   }
 };
 
-
+// Get messages for an active project conversation.
 const getMessages = async (req, res) => {
   try {
     const { applicationId } = req.params;
+
     const { application } = await getApplicationForUser(
       applicationId,
       req.user.userId
@@ -102,7 +119,16 @@ const getMessages = async (req, res) => {
       });
     }
 
-    const messages = await Message.find({ application: application._id })
+    if (!isConversationActive(application)) {
+      return res.status(403).json({
+        success: false,
+        message: "This project chat is no longer active.",
+      });
+    }
+
+    const messages = await Message.find({
+      application: application._id,
+    })
       .populate("sender", "name")
       .sort({ createdAt: 1 });
 
@@ -120,11 +146,15 @@ const getMessages = async (req, res) => {
   }
 };
 
+// Send a message in an active project conversation.
 const sendMessage = async (req, res) => {
   try {
     const { applicationId } = req.params;
+
     const text =
-      typeof req.body.text === "string" ? req.body.text.trim() : "";
+      typeof req.body.text === "string"
+        ? req.body.text.trim()
+        : "";
 
     if (!text) {
       return res.status(400).json({
@@ -134,15 +164,21 @@ const sendMessage = async (req, res) => {
     }
 
     const userId = req.user.userId;
-    const { application, isFreelancer } = await getApplicationForUser(
-      applicationId,
-      userId
-    );
+
+    const { application, isFreelancer } =
+      await getApplicationForUser(applicationId, userId);
 
     if (!application) {
       return res.status(404).json({
         success: false,
         message: "Conversation not found.",
+      });
+    }
+
+    if (!isConversationActive(application)) {
+      return res.status(403).json({
+        success: false,
+        message: "You cannot send messages in this inactive project.",
       });
     }
 
@@ -156,10 +192,30 @@ const sendMessage = async (req, res) => {
       text,
     });
 
+    const populatedMessage = await Message.findById(message._id)
+      .populate("sender", "name");
+
+    const recipient = isFreelancer
+      ? application.task.client
+      : application.freelancer;
+
+    const recipientPath = isFreelancer
+      ? "/client/messages"
+      : "/freelancer/messages";
+
+    await createNotification({
+      recipient,
+      sender: userId,
+      type: "message_received",
+      title: "New project message",
+      message: `${populatedMessage.sender?.name || "Someone"} sent you a message about "${application.task.title}".`,
+      link: `${recipientPath}?conversationId=${application._id}`,
+    });
+
     return res.status(201).json({
       success: true,
       message: "Message sent successfully.",
-      data: message,
+      data: populatedMessage,
     });
   } catch (error) {
     console.error("Send message error:", error);
@@ -169,6 +225,11 @@ const sendMessage = async (req, res) => {
       message: "Failed to send message.",
     });
   }
+
 };
 
-module.exports = { getMyConversations, getMessages, sendMessage };
+module.exports = {
+  getMyConversations,
+  getMessages,
+  sendMessage,
+};
