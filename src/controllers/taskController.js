@@ -1,4 +1,5 @@
 const Task = require("../models/Task");
+const Application = require("../models/Application");
 
 const createTask = async (req, res) => {
   try {
@@ -124,9 +125,22 @@ const getTasks = async (req, res) => {
       .populate("client", "name role clientType clientProfile.companyName")
       .sort({ createdAt: -1 });
 
+    const tasksWithApplicationCount = await Promise.all(
+      tasks.map(async (task) => {
+        const applicationCount = await Application.countDocuments({
+          task: task._id,
+        });
+
+        return {
+          ...task.toObject(),
+          applicationCount,
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
-      tasks,
+      tasks: tasksWithApplicationCount,
     });
   } catch (error) {
     console.error("Get tasks error:", error);
@@ -177,9 +191,22 @@ const getMyTasks = async (req, res) => {
     const tasks = await Task.find({ client: clientId })
       .sort({ createdAt: -1 });
 
+    const tasksWithApplicationCount = await Promise.all(
+      tasks.map(async (task) => {
+        const applicationCount = await Application.countDocuments({
+          task: task._id,
+        });
+
+        return {
+          ...task.toObject(),
+          applicationCount,
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
-      tasks,
+      tasks: tasksWithApplicationCount,
     });
   } catch (error) {
     console.error("Get My Tasks Error:", error);
