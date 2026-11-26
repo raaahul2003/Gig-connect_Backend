@@ -1,8 +1,9 @@
+
 const jwt = require("jsonwebtoken");
+const User = require("../models/user");
 
 const protect = (req, res, next) => {
   try {
-    // Get token from Authorization header
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
@@ -12,21 +13,13 @@ const protect = (req, res, next) => {
       });
     }
 
-    // Extract token
     const token = authHeader.split(" ")[1];
 
-    // Verify token
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Attach user information to request
     req.user = decoded;
 
-    // Continue to next middleware/controller
     next();
-
   } catch (error) {
     return res.status(401).json({
       success: false,
@@ -35,4 +28,34 @@ const protect = (req, res, next) => {
   }
 };
 
-module.exports = { protect };
+// Admin-only access
+const adminOnly = async (req, res, next) => {
+  try {
+    const userId = req.user?.userId || req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication information missing.",
+      });
+    }
+
+    const user = await User.findById(userId).select("role");
+
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admin privileges required.",
+      });
+    }
+
+    next();
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to verify admin access.",
+    });
+  }
+};
+
+module.exports = { protect, adminOnly };

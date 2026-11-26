@@ -62,12 +62,23 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: undefined,
     },
+    // Password reset
+    passwordResetToken: {
+      type: String,
+      default: undefined,
+    },
+
+    passwordResetExpires: {
+      type: Date,
+      default: undefined,
+    },
 
     password: {
       type: String,
       required: false,
       minlength: 8,
     },
+
 
     role: {
       type: String,

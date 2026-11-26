@@ -12,6 +12,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const messageRoutes = require("./routes/messageRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const userRoutes = require("./routes/userRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 const app = express();
 
 // Middleware
@@ -46,6 +47,8 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/ai", aiRoutes);
 
 app.use("/api/users", userRoutes);
+
+app.use("/api/admin", adminRoutes);
 
 
 const startServer = async () => {

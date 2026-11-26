@@ -3,6 +3,8 @@ const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
 const sendVerificationEmail = require("../utils/sendVerificationEmail");
+const sendPasswordResetEmail = require("../utils/sendPasswordResetEmail");
+
 const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Register a new user
@@ -357,5 +359,140 @@ const verifyEmail = async (req, res) => {
   }
 };
 
+// Request password reset
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
 
-module.exports = { registerUser, loginUser, googleLogin, completeGoogleRegistration, verifyEmail };
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide a valid email address.",
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.toLowerCase().trim(),
+    });
+
+    // Always return the same response to avoid revealing registered emails.
+    const genericMessage =
+      "If an account exists with this email, a password reset link will be sent.";
+
+    if (!user || !user.password) {
+      return res.status(200).json({
+        success: true,
+        message: genericMessage,
+      });
+    }
+
+    // Generate a secure random token.
+    const resetToken = crypto.randomBytes(32).toString("hex");
+
+    // Store only its SHA-256 hash.
+    user.passwordResetToken = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    // Token expires in 15 minutes.
+    user.passwordResetExpires = Date.now() + 15 * 60 * 1000;
+
+    await user.save();
+
+    try {
+      await sendPasswordResetEmail(user.email, resetToken);
+    } catch (emailError) {
+      // Invalidate the token if email delivery fails.
+      user.passwordResetToken = undefined;
+      user.passwordResetExpires = undefined;
+      await user.save();
+
+      console.error("Password reset email delivery failed:", emailError);
+
+      // Do not reveal whether the email belongs to an account.
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: genericMessage,
+    });
+  } catch (error) {
+    console.error("Forgot password error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to process your request. Please try again.",
+    });
+  }
+};
+
+// Reset password using token
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password, confirmPassword } = req.body;
+
+    if (!token || !password || !confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Please provide all required fields.",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must contain at least 8 characters.",
+      });
+    }
+
+    if (password !== confirmPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Passwords do not match.",
+      });
+    }
+
+    const hashedToken = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Password reset link is invalid or has expired.",
+      });
+    }
+
+    // Update password. Your existing pre-save hook hashes it.
+    user.password = password;
+
+    // Invalidate the reset token after successful use.
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successful. You can now log in.",
+    });
+  } catch (error) {
+    console.error("Reset password error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Unable to reset password. Please try again.",
+    });
+  }
+};
+
+
+module.exports = { registerUser, loginUser, googleLogin, completeGoogleRegistration, verifyEmail, forgotPassword, resetPassword };

@@ -1,5 +1,5 @@
 const express = require("express");
-const { registerUser , loginUser ,googleLogin ,completeGoogleRegistration ,verifyEmail } = require("../controllers/authController");
+const { registerUser, loginUser, googleLogin, completeGoogleRegistration, verifyEmail, forgotPassword, resetPassword, } = require("../controllers/authController");
 const { protect } = require("../middleware/authMiddleware");
 const { authorizeRoles } = require("../middleware/roleMiddleware");
 
@@ -41,5 +41,11 @@ router.get(
     });
   }
 );
+
+// Forgot password
+router.post("/forgot-password", forgotPassword);
+
+// Reset password
+router.post("/reset-password/:token", resetPassword);
 
 module.exports = router;
