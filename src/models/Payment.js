@@ -34,10 +34,40 @@ const paymentSchema = new mongoose.Schema(
             required: true,
         },
 
+        // Original agreed price: freelancer's accepted bid
         amount: {
             type: Number,
             required: true,
             min: 1,
+        },
+
+        // GigConnect platform commission percentage
+        platformFeeRate: {
+            type: Number,
+            min: 0,
+            max: 100,
+            default: undefined,
+        },
+
+        // Platform commission amount
+        platformFee: {
+            type: Number,
+            min: 0,
+            default: undefined,
+        },
+
+        // Full amount payable to freelancer
+        freelancerAmount: {
+            type: Number,
+            min: 0,
+            default: undefined,
+        },
+
+        // Total amount payable by client
+        clientTotal: {
+            type: Number,
+            min: 1,
+            default: undefined,
         },
 
         currency: {

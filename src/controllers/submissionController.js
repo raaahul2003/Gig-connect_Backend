@@ -12,46 +12,46 @@ const Submission = require("../models/Submission");
 const Application = require("../models/Application");
 const Task = require("../models/Task");
 const Payment = require("../models/Payment");
-
+const PLATFORM_FEE_RATE = 5;
 
 
 const uploadBufferToCloudinary = (file) => {
-    return new Promise((resolve, reject) => {
-        const extension = path.extname(file.originalname).toLowerCase();
+  return new Promise((resolve, reject) => {
+    const extension = path.extname(file.originalname).toLowerCase();
 
-        const publicId =
-            `gigconnect/submissions/${crypto.randomUUID()}${extension}`;
+    const publicId =
+      `gigconnect/submissions/${crypto.randomUUID()}${extension}`;
 
-        const uploadStream = cloudinary.uploader.upload_stream(
-            {
-                resource_type: "raw",
-                type: "authenticated",
-                public_id: publicId,
-                overwrite: false,
-            },
-            (error, result) => {
-                if (error) {
-                    return reject(error);
-                }
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        type: "authenticated",
+        public_id: publicId,
+        overwrite: false,
+      },
+      (error, result) => {
+        if (error) {
+          return reject(error);
+        }
 
-                resolve(result);
-            }
-        );
+        resolve(result);
+      }
+    );
 
-        uploadStream.end(file.buffer);
-    });
+    uploadStream.end(file.buffer);
+  });
 };
 
 // Delete uploaded Cloudinary files if database creation fails
 const deleteCloudinaryFiles = async (files = []) => {
-    await Promise.allSettled(
-        files.map((file) =>
-            cloudinary.uploader.destroy(file.public_id, {
-                resource_type: "raw",
-                type: "authenticated",
-            })
-        )
-    );
+  await Promise.allSettled(
+    files.map((file) =>
+      cloudinary.uploader.destroy(file.public_id, {
+        resource_type: "raw",
+        type: "authenticated",
+      })
+    )
+  );
 };
 
 
@@ -211,47 +211,47 @@ const createSubmission = async (req, res) => {
 
 // 2. Freelancer views their submissions
 const getMySubmissions = async (req, res) => {
-    try {
-        const submissions = await Submission.find({
-            freelancer: req.user.userId,
-        })
-            .populate("task", "title category deadline status")
-            .sort({ createdAt: -1 });
+  try {
+    const submissions = await Submission.find({
+      freelancer: req.user.userId,
+    })
+      .populate("task", "title category deadline status")
+      .sort({ createdAt: -1 });
 
-        return res.status(200).json({
-            count: submissions.length,
-            submissions,
-        });
-    } catch (error) {
-        console.error("Get my submissions error:", error);
+    return res.status(200).json({
+      count: submissions.length,
+      submissions,
+    });
+  } catch (error) {
+    console.error("Get my submissions error:", error);
 
-        return res.status(500).json({
-            message: "Failed to fetch your submissions.",
-        });
-    }
+    return res.status(500).json({
+      message: "Failed to fetch your submissions.",
+    });
+  }
 };
 
 // 3. Client views submissions for their tasks
 const getSubmissionsForClient = async (req, res) => {
-    try {
-        const submissions = await Submission.find({
-            client: req.user.userId,
-        })
-            .populate("task", "title category deadline status")
-            .populate("freelancer", "name email")
-            .sort({ createdAt: -1 });
+  try {
+    const submissions = await Submission.find({
+      client: req.user.userId,
+    })
+      .populate("task", "title category deadline status")
+      .populate("freelancer", "name email")
+      .sort({ createdAt: -1 });
 
-        return res.status(200).json({
-            count: submissions.length,
-            submissions,
-        });
-    } catch (error) {
-        console.error("Get client submissions error:", error);
+    return res.status(200).json({
+      count: submissions.length,
+      submissions,
+    });
+  } catch (error) {
+    console.error("Get client submissions error:", error);
 
-        return res.status(500).json({
-            message: "Failed to fetch submissions.",
-        });
-    }
+    return res.status(500).json({
+      message: "Failed to fetch submissions.",
+    });
+  }
 };
 
 // View or download a submission file
@@ -387,170 +387,204 @@ const downloadSubmissionFile = async (req, res) => {
 
 // 4. Client approves work or requests revisions
 const reviewSubmission = async (req, res) => {
-    const session = await mongoose.startSession();
+  const session = await mongoose.startSession();
 
-    try {
-        const { status, feedback } = req.body;
-        const { submissionId } = req.params;
+  try {
+    const { status, feedback } = req.body;
+    const { submissionId } = req.params;
 
-        if (!mongoose.Types.ObjectId.isValid(submissionId)) {
-            return res.status(400).json({
-                message: "Invalid submission ID.",
-            });
-        }
-
-        const clientId = req.user.userId;
-
-        if (!["approved", "revision_requested"].includes(status)) {
-            return res.status(400).json({
-                message: "Invalid review status.",
-            });
-        }
-
-        if (
-            status === "revision_requested" &&
-            (!feedback || feedback.trim().length === 0)
-        ) {
-            return res.status(400).json({
-                message: "Feedback is required when requesting revisions.",
-            });
-        }
-
-        let reviewedSubmission;
-
-        await session.withTransaction(async () => {
-            const submission = await Submission.findOne({
-                _id: submissionId,
-                client: clientId,
-                status: "submitted",
-            }).session(session);
-
-            if (!submission) {
-                throw new Error("SUBMISSION_NOT_FOUND_OR_ALREADY_REVIEWED");
-            }
-
-            if (status === "approved") {
-                const updatedTask = await Task.findOneAndUpdate(
-                    {
-                        _id: submission.task,
-                        client: clientId,
-                        status: "in_progress",
-                    },
-                    {
-                        $set: { status: "completed" },
-                    },
-                    {
-                        new: true,
-                        session,
-                    }
-                );
-
-                if (!updatedTask) {
-                    throw new Error("TASK_NOT_AVAILABLE_FOR_APPROVAL");
-                }
-
-                // Find the accepted application
-                const application = await Application.findOne({
-                    _id: submission.application,
-                    task: submission.task,
-                    freelancer: submission.freelancer,
-                    status: "accepted",
-                }).session(session);
-
-                if (!application) {
-                    throw new Error("ACCEPTED_APPLICATION_NOT_FOUND");
-                }
-
-                // Create pending payment
-                await Payment.create(
-                    [
-                        {
-                            task: submission.task,
-                            application: application._id,
-                            submission: submission._id,
-                            client: clientId,
-                            freelancer: submission.freelancer,
-                            amount: application.bidAmount,
-                            status: "pending",
-
-                            // Payment method will be selected later
-                            paymentMethod: null,
-                        },
-                    ],
-                    { session }
-                );
-            }
-
-            submission.status = status;
-            submission.feedback = feedback ? feedback.trim() : "";
-
-            await submission.save({ session });
-
-            reviewedSubmission = submission;
-        });
-
-        if (status === "revision_requested") {
-            await createNotification({
-                recipient: reviewedSubmission.freelancer,
-                sender: clientId,
-                type: "revision_requested",
-                title: "Revision requested",
-                message: `The client requested changes to your submission. Feedback: ${reviewedSubmission.feedback}`,
-                link: "/freelancer/submissions",
-            });
-        }
-
-        if (status === "approved") {
-            await createNotification({
-                recipient: reviewedSubmission.freelancer,
-                sender: clientId,
-                type: "submission_approved",
-                title: "Work approved!",
-                message: "Your submitted work has been approved by the client.",
-                link: "/freelancer/submissions",
-            });
-        }
-
-        return res.status(200).json({
-            message:
-                status === "approved"
-                    ? "Work approved successfully."
-                    : "Revision requested successfully.",
-            submission: reviewedSubmission,
-        });
-    } catch (error) {
-        console.error("Review submission error:", error);
-
-        if (error.message === "SUBMISSION_NOT_FOUND_OR_ALREADY_REVIEWED") {
-            return res.status(404).json({
-                message: "Submission not found or already reviewed.",
-            });
-        }
-
-        if (error.message === "TASK_NOT_AVAILABLE_FOR_APPROVAL") {
-            return res.status(400).json({
-                message: "Task is not available for approval.",
-            });
-        }
-
-        if (error.message === "ACCEPTED_APPLICATION_NOT_FOUND") {
-            return res.status(400).json({
-                message: "Accepted application not found for this submission.",
-            });
-        }
-
-        return res.status(500).json({
-            message: "Failed to review submission.",
-        });
-    } finally {
-        await session.endSession();
+    if (!mongoose.Types.ObjectId.isValid(submissionId)) {
+      return res.status(400).json({
+        message: "Invalid submission ID.",
+      });
     }
+
+    const clientId = req.user.userId;
+
+    if (!["approved", "revision_requested"].includes(status)) {
+      return res.status(400).json({
+        message: "Invalid review status.",
+      });
+    }
+
+    if (
+      status === "revision_requested" &&
+      (!feedback || feedback.trim().length === 0)
+    ) {
+      return res.status(400).json({
+        message: "Feedback is required when requesting revisions.",
+      });
+    }
+
+    let reviewedSubmission;
+
+    await session.withTransaction(async () => {
+      const submission = await Submission.findOne({
+        _id: submissionId,
+        client: clientId,
+        status: "submitted",
+      }).session(session);
+
+      if (!submission) {
+        throw new Error("SUBMISSION_NOT_FOUND_OR_ALREADY_REVIEWED");
+      }
+
+      if (status === "approved") {
+        const updatedTask = await Task.findOneAndUpdate(
+          {
+            _id: submission.task,
+            client: clientId,
+            status: "in_progress",
+          },
+          {
+            $set: { status: "completed" },
+          },
+          {
+            new: true,
+            session,
+          }
+        );
+
+        if (!updatedTask) {
+          throw new Error("TASK_NOT_AVAILABLE_FOR_APPROVAL");
+        }
+
+        // Find the accepted application
+        const application = await Application.findOne({
+          _id: submission.application,
+          task: submission.task,
+          freelancer: submission.freelancer,
+          status: "accepted",
+        }).session(session);
+
+        if (!application) {
+          throw new Error("ACCEPTED_APPLICATION_NOT_FOUND");
+        }
+
+        // Calculate GigConnect platform commission
+        const taskAmount = Number(application.bidAmount);
+
+        if (!Number.isFinite(taskAmount) || taskAmount <= 0) {
+          throw new Error("INVALID_TASK_AMOUNT");
+        }
+
+        const platformFee = Math.round(
+          taskAmount * (PLATFORM_FEE_RATE / 100) * 100
+        ) / 100;
+
+        const freelancerAmount = taskAmount;
+
+        const clientTotal = Math.round(
+          (taskAmount + platformFee) * 100
+        ) / 100;
+
+        // Create pending payment
+        await Payment.create(
+          [
+            {
+              task: submission.task,
+              application: application._id,
+              submission: submission._id,
+              client: clientId,
+              freelancer: submission.freelancer,
+
+              // Original agreed task price
+              amount: taskAmount,
+
+              // GigConnect commission
+              platformFeeRate: PLATFORM_FEE_RATE,
+              platformFee,
+
+              // Freelancer receives the full agreed price
+              freelancerAmount,
+
+              // Client pays task price + platform fee
+              clientTotal,
+
+              status: "pending",
+              paymentMethod: null,
+            },
+          ],
+          { session }
+        );
+      }
+
+      submission.status = status;
+      submission.feedback = feedback ? feedback.trim() : "";
+
+      await submission.save({ session });
+
+      reviewedSubmission = submission;
+    });
+
+    if (status === "revision_requested") {
+      await createNotification({
+        recipient: reviewedSubmission.freelancer,
+        sender: clientId,
+        type: "revision_requested",
+        title: "Revision requested",
+        message: `The client requested changes to your submission. Feedback: ${reviewedSubmission.feedback}`,
+        link: "/freelancer/submissions",
+      });
+    }
+
+    if (status === "approved") {
+      await createNotification({
+        recipient: reviewedSubmission.freelancer,
+        sender: clientId,
+        type: "submission_approved",
+        title: "Work approved!",
+        message: "Your submitted work has been approved by the client.",
+        link: "/freelancer/submissions",
+      });
+    }
+
+    return res.status(200).json({
+      message:
+        status === "approved"
+          ? "Work approved successfully."
+          : "Revision requested successfully.",
+      submission: reviewedSubmission,
+    });
+  } catch (error) {
+    console.error("Review submission error:", error);
+
+    if (error.message === "SUBMISSION_NOT_FOUND_OR_ALREADY_REVIEWED") {
+      return res.status(404).json({
+        message: "Submission not found or already reviewed.",
+      });
+    }
+
+    if (error.message === "TASK_NOT_AVAILABLE_FOR_APPROVAL") {
+      return res.status(400).json({
+        message: "Task is not available for approval.",
+      });
+    }
+
+    if (error.message === "ACCEPTED_APPLICATION_NOT_FOUND") {
+      return res.status(400).json({
+        message: "Accepted application not found for this submission.",
+      });
+    }
+
+    if (error.message === "INVALID_TASK_AMOUNT") {
+      return res.status(400).json({
+        message: "Invalid task payment amount.",
+      });
+    }
+
+    return res.status(500).json({
+      message: "Failed to review submission.",
+    });
+  } finally {
+    await session.endSession();
+  }
 };
 
 module.exports = {
-    createSubmission,
-    getMySubmissions,
-    getSubmissionsForClient,
-    downloadSubmissionFile,
-    reviewSubmission,
+  createSubmission,
+  getMySubmissions,
+  getSubmissionsForClient,
+  downloadSubmissionFile,
+  reviewSubmission,
 };
