@@ -169,6 +169,23 @@ const userSchema = new mongoose.Schema(
         default: null,
       },
     },
+    // Settings - notification preferences
+    notificationPreferences: {
+      taskUpdates: {
+        type: Boolean,
+        default: true,
+      },
+      applicationUpdates: {
+        type: Boolean,
+        default: true,
+      },
+      paymentUpdates: {
+        type: Boolean,
+        default: true,
+      },
+    },
+
+
   },
   {
     timestamps: true,

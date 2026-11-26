@@ -245,10 +245,131 @@ const uploadProfilePhoto = async (req, res) => {
 };
 
 
+// UPDATE NOTIFICATION PREFERENCES
+const updateNotificationPreferences = async (req, res) => {
+  try {
+    const {
+      taskUpdates,
+      applicationUpdates,
+      paymentUpdates,
+    } = req.body;
+
+    const preferences = {
+      taskUpdates,
+      applicationUpdates,
+      paymentUpdates,
+    };
+
+    for (const [key, value] of Object.entries(preferences)) {
+      if (typeof value !== "boolean") {
+        return res.status(400).json({
+          message: `Invalid value for ${key}.`,
+        });
+      }
+    }
+
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    user.notificationPreferences = preferences;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Notification preferences updated successfully.",
+      notificationPreferences: user.notificationPreferences,
+    });
+  } catch (error) {
+    console.error("Update notification preferences error:", error);
+
+    return res.status(500).json({
+      message: "Failed to update notification preferences.",
+    });
+  }
+};
+
+
+// CHANGE PASSWORD
+const changePassword = async (req, res) => {
+  try {
+    const {
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        message: "Please fill in all password fields.",
+      });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({
+        message: "New password must contain at least 8 characters.",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: "New password and confirmation do not match.",
+      });
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({
+        message: "New password must be different from current password.",
+      });
+    }
+
+    const user = await User.findById(req.user.userId);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found.",
+      });
+    }
+
+    if (!user.password) {
+      return res.status(400).json({
+        message: "This account does not have a password. Use your account's password setup or reset process.",
+      });
+    }
+
+    const isPasswordCorrect = await user.comparePassword(currentPassword);
+
+    if (!isPasswordCorrect) {
+      return res.status(400).json({
+        message: "Current password is incorrect.",
+      });
+    }
+
+    user.password = newPassword;
+    await user.save();
+
+    return res.status(200).json({
+      message: "Password changed successfully.",
+    });
+  } catch (error) {
+    console.error("Change password error:", error);
+
+    return res.status(500).json({
+      message: "Failed to change password.",
+    });
+  }
+};
+
+
 module.exports = {
   getMyProfile,
   updateMyProfile,
   getPublicProfile,
   uploadProfilePhoto,
-  getFreelancerWorkHistory
+  getFreelancerWorkHistory,
+  updateNotificationPreferences,
+  changePassword,
 };

@@ -7,7 +7,9 @@ const {
   updateMyProfile,
   getPublicProfile,
   uploadProfilePhoto,
-  getFreelancerWorkHistory
+  getFreelancerWorkHistory,
+  updateNotificationPreferences,
+  changePassword,
 } = require("../controllers/userController");
 
 const { protect } = require("../middleware/authMiddleware");
@@ -17,13 +19,24 @@ const profileUpload = require("../middleware/profileUploadMiddleware");
 router.get("/profile", protect, getMyProfile);
 router.put("/profile", protect, updateMyProfile);
 
-// Public route — anyone can view another user's profile
-router.get("/:userId/profile", getPublicProfile);
+// Settings routes
+router.put(
+  "/settings/notifications",
+  protect,
+  updateNotificationPreferences
+);
+router.put("/change-password", protect, changePassword);
 
-// Public route — freelancer's completed work history
+// Public routes
+router.get("/:userId/profile", getPublicProfile);
 router.get("/:userId/work-history", getFreelancerWorkHistory);
 
-// upload profile
-router.post("/profile/photo",protect,profileUpload.single("photo"),uploadProfilePhoto);
+// Profile photo upload
+router.post(
+  "/profile/photo",
+  protect,
+  profileUpload.single("photo"),
+  uploadProfilePhoto
+);
 
 module.exports = router;
