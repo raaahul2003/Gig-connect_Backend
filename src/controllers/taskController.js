@@ -16,6 +16,30 @@ const createTask = async (req, res) => {
 
     const submissionKey = req.get("Idempotency-Key")?.trim();
 
+    // Check whether this client is allowed to post new tasks
+    const User = require("../../models/User");
+
+    const client = await User.findById(req.user.userId).select(
+      "canPostTasks taskPostingRestrictedReason"
+    );
+
+    if (!client) {
+      return res.status(404).json({
+        success: false,
+        message: "Client account not found.",
+      });
+    }
+
+    if (client.canPostTasks === false) {
+      return res.status(403).json({
+        success: false,
+        code: "TASK_POSTING_RESTRICTED",
+        message:
+          client.taskPostingRestrictedReason ||
+          "Your ability to post new tasks is temporarily restricted. Please contact GigConnect support.",
+      });
+    }
+
     if (!submissionKey || submissionKey.length > 100) {
       return res.status(400).json({
         success: false,
@@ -121,7 +145,10 @@ const createTask = async (req, res) => {
 
 const getTasks = async (req, res) => {
   try {
-    const tasks = await Task.find({ status: "open" })
+    const tasks = await Task.find({
+      status: "open",
+      isHidden: { $ne: true },
+    })
       .populate("client", "name role clientType clientProfile.companyName")
       .sort({ createdAt: -1 });
 
@@ -158,6 +185,7 @@ const getTaskById = async (req, res) => {
     const task = await Task.findOne({
       _id: req.params.taskId,
       status: "open",
+      isHidden: { $ne: true },
     }).populate(
       "client",
       "name role clientType clientProfile.companyName"

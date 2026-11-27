@@ -13,6 +13,7 @@ const messageRoutes = require("./routes/messageRoutes");
 const aiRoutes = require("./routes/aiRoutes");
 const userRoutes = require("./routes/userRoutes");
 const adminRoutes = require("./routes/adminRoutes");
+const disputeRoutes = require("./routes/disputeRoutes");
 const app = express();
 
 // Middleware
@@ -50,6 +51,7 @@ app.use("/api/users", userRoutes);
 
 app.use("/api/admin", adminRoutes);
 
+app.use("/api/disputes", disputeRoutes);
 
 const startServer = async () => {
   try {

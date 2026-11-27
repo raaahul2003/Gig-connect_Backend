@@ -79,11 +79,49 @@ const userSchema = new mongoose.Schema(
       minlength: 8,
     },
 
-
     role: {
       type: String,
       enum: ["client", "freelancer", "admin"],
       default: "freelancer",
+    },
+
+    // Admin account management
+    isSuspended: {
+      type: Boolean,
+      default: false,
+    },
+
+    suspendedAt: {
+      type: Date,
+      default: null,
+    },
+
+    suspensionReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    suspendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    // Dispute-related restrictions
+    canPostTasks: {
+      type: Boolean,
+      default: true,
+    },
+
+    taskPostingRestrictedReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    taskPostingRestrictedAt: {
+      type: Date,
+      default: null,
     },
 
     // Client account type
@@ -195,7 +233,6 @@ const userSchema = new mongoose.Schema(
         default: true,
       },
     },
-
 
   },
   {

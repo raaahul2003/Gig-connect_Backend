@@ -49,6 +49,27 @@ const taskSchema = new mongoose.Schema(
       enum: ["open", "in_progress", "completed", "cancelled"],
       default: "open",
     },
+
+    // Admin moderation fields
+    isHidden: {
+      type: Boolean,
+      default: false,
+    },
+    moderationReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    moderatedAt: {
+      type: Date,
+      default: null,
+    },
+    moderatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     submissionKey: {
       type: String,
       trim: true,
