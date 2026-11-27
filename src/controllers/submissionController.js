@@ -216,6 +216,7 @@ const getMySubmissions = async (req, res) => {
       freelancer: req.user.userId,
     })
       .populate("task", "title category deadline status")
+      .populate("client", "name clientType clientProfile.companyName")
       .sort({ createdAt: -1 });
 
     return res.status(200).json({

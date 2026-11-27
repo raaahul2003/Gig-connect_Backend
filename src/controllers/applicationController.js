@@ -177,7 +177,14 @@ const getMyApplications = async (req, res) => {
     const freelancerId = req.user.userId;
 
     const applications = await Application.find({ freelancer: freelancerId })
-      .populate("task", "title")
+      .populate({
+        path: "task",
+        select: "title client",
+        populate: {
+          path: "client",
+          select: "name clientType clientProfile.companyName",
+        },
+      })
       .sort({ createdAt: -1 });
 
     return res.status(200).json({
